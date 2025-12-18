@@ -8,6 +8,7 @@ import { ThemeProvider } from "./config/theme";
 const Lobby = lazy(() => import("./routes/Lobby"));
 const GameHome = lazy(() => import("./routes/GameHome"));
 const JoinLobby = lazy(() => import("./routes/JoinLobby"));
+const GameRoom = lazy(() => import("./routes/GameRoom"));
 const NotFound = lazy(() => import("./routes/NotFound"));
 
 const root = document.getElementById("root");
@@ -33,6 +34,7 @@ function Content() {
       <Route path="/" component={GameHome} />
       <Route path="/lobby/:code" component={Lobby} />
       <Route path="/join/:code" component={JoinLobby} />
+      <Route path="/game/:code" component={GameRoom} />
       <Route path="/*paramName" component={NotFound} />
     </Router>
   );

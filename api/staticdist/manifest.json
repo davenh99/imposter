@@ -1,0 +1,9 @@
+{
+  "name": "Progressa",
+  "short_name": "Progressa",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#2f3e46",
+  "theme_color": "#84a98c",
+  "icons": [{ "src": "/assets/icon.png", "sizes": "192x192", "type": "image/png" }]
+}

@@ -1,0 +1,276 @@
+package api
+
+import (
+	"crypto/rand"
+	"encoding/json"
+	"fmt"
+	"log"
+	"math/big"
+	"net/http"
+	"os"
+	"sync"
+	"time"
+
+	"github.com/go-chi/chi"
+	"github.com/gorilla/websocket"
+)
+
+// Minimal lobby + websocket implementation.
+
+type LobbyManager struct {
+	mu      sync.Mutex
+	lobbies map[string]*Lobby
+	logFile *os.File
+}
+
+type Lobby struct {
+	Code       string            `json:"code"`
+	Players    []string          `json:"players"`
+	Imposters  int               `json:"imposters"`
+	GameState  string            `json:"game_state"` // "waiting", "started", "ended"
+	GameWord   string            `json:"game_word"`
+	PlayerRole map[string]string // "imposter" or "word"
+	clients    map[*websocket.Conn]string
+	mu         sync.Mutex
+}
+
+type createLobbyResp struct {
+	Code string `json:"code"`
+}
+
+func NewLobbyManager() *LobbyManager {
+	// open or create a log file
+	logFile, err := os.OpenFile("lobbies.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Println("failed to open log file:", err)
+	}
+	return &LobbyManager{
+		lobbies: make(map[string]*Lobby),
+		logFile: logFile,
+	}
+}
+
+func (m *LobbyManager) logEvent(format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	logLine := fmt.Sprintf("[%s] %s\n", timestamp, msg)
+	log.Print(logLine)
+	if m.logFile != nil {
+		m.logFile.WriteString(logLine)
+	}
+}
+
+func (m *LobbyManager) CreateLobby(w http.ResponseWriter, r *http.Request) {
+	code := generateCode(6)
+	l := &Lobby{
+		Code:       code,
+		Players:    []string{},
+		Imposters:  0,
+		GameState:  "waiting",
+		GameWord:   "",
+		PlayerRole: make(map[string]string),
+		clients:    make(map[*websocket.Conn]string),
+	}
+
+	m.mu.Lock()
+	m.lobbies[code] = l
+	m.mu.Unlock()
+
+	m.logEvent("Lobby created: %s", code)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(createLobbyResp{Code: code})
+}
+
+func (m *LobbyManager) GetLobby(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+	m.mu.Lock()
+	l, ok := m.lobbies[code]
+	m.mu.Unlock()
+	if !ok {
+		http.Error(w, "lobby not found", http.StatusNotFound)
+		return
+	}
+
+	l.mu.Lock()
+	resp := struct {
+		Code    string   `json:"code"`
+		Players []string `json:"players"`
+	}{Code: l.Code, Players: append([]string(nil), l.Players...)}
+	l.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool { return true },
+}
+
+func (m *LobbyManager) ServeWS(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+
+	m.mu.Lock()
+	l, ok := m.lobbies[code]
+	m.mu.Unlock()
+	if !ok {
+		http.Error(w, "lobby not found", http.StatusNotFound)
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println("ws upgrade error:", err)
+		return
+	}
+
+	// Wait for join message with player name
+	var joinMsg map[string]any
+	if err := conn.ReadJSON(&joinMsg); err != nil {
+		log.Println("failed to read join message:", err)
+		conn.Close()
+		return
+	}
+
+	if joinMsg["type"] != "join" {
+		conn.WriteJSON(map[string]string{"error": "first message must be join"})
+		conn.Close()
+		return
+	}
+
+	name, ok := joinMsg["name"].(string)
+	if !ok || name == "" {
+		conn.WriteJSON(map[string]string{"error": "name required"})
+		conn.Close()
+		return
+	}
+
+	// register
+	l.mu.Lock()
+	l.clients[conn] = name
+	l.Players = append(l.Players, name)
+	l.mu.Unlock()
+
+	m.logEvent("Player joined lobby %s: %s (total players: %d)", code, name, len(l.Players))
+
+	// broadcast state
+	m.broadcastLobby(l)
+
+	// read loop
+	for {
+		var msg map[string]any
+		if err := conn.ReadJSON(&msg); err != nil {
+			break
+		}
+		// Handle other message types here if needed
+		if t, ok := msg["type"].(string); ok && t == "start" {
+			m.broadcastMessage(l, map[string]any{"type": "start_game"})
+		}
+	}
+
+	// cleanup on disconnect
+	l.mu.Lock()
+	delete(l.clients, conn)
+	// remove from Players slice
+	for i, p := range l.Players {
+		if p == name {
+			l.Players = append(l.Players[:i], l.Players[i+1:]...)
+			break
+		}
+	}
+	l.mu.Unlock()
+
+	m.broadcastLobby(l)
+	conn.Close()
+}
+
+func (m *LobbyManager) broadcastLobby(l *Lobby) {
+	l.mu.Lock()
+	state := map[string]any{"type": "lobby_state", "code": l.Code, "players": append([]string(nil), l.Players...)}
+	for c := range l.clients {
+		_ = c.WriteJSON(state)
+	}
+	l.mu.Unlock()
+}
+
+func (m *LobbyManager) broadcastMessage(l *Lobby, msg any) {
+	l.mu.Lock()
+	for c := range l.clients {
+		_ = c.WriteJSON(msg)
+	}
+	l.mu.Unlock()
+}
+
+func (m *LobbyManager) StartGame(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+	var req struct {
+		Imposters int `json:"imposters"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	m.mu.Lock()
+	l, ok := m.lobbies[code]
+	m.mu.Unlock()
+	if !ok {
+		http.Error(w, "lobby not found", http.StatusNotFound)
+		return
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	// Validate imposters count
+	if req.Imposters < 1 || req.Imposters >= len(l.Players) {
+		http.Error(w, fmt.Sprintf("imposters must be 1 to %d", len(l.Players)-1), http.StatusBadRequest)
+		return
+	}
+
+	l.Imposters = req.Imposters
+	l.GameState = "started"
+	idx, _ := rand.Int(rand.Reader, big.NewInt(int64(len(GameWords))))
+	l.GameWord = GameWords[idx.Int64()]
+	l.PlayerRole = make(map[string]string)
+
+	// Assign roles randomly
+	impostersNeeded := req.Imposters
+	for _, player := range l.Players {
+		if impostersNeeded > 0 {
+			l.PlayerRole[player] = "imposter"
+			impostersNeeded--
+		} else {
+			l.PlayerRole[player] = "word"
+		}
+	}
+
+	m.logEvent("Game started in lobby %s with word '%s' and %d imposters", code, l.GameWord, req.Imposters)
+
+	// Broadcast game start with roles to each player
+	for c, name := range l.clients {
+		role := l.PlayerRole[name]
+		msg := map[string]any{
+			"type": "game_started",
+			"role": role,
+			"code": code,
+		}
+		if role == "word" {
+			msg["word"] = l.GameWord
+		}
+		_ = c.WriteJSON(msg)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "game started"})
+}
+
+func generateCode(n int) string {
+	letters := "abcdefghijklmnopqrstuvwxyz"
+	out := make([]byte, n)
+	for i := 0; i < n; i++ {
+		num, _ := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		out[i] = letters[num.Int64()]
+	}
+	return string(out)
+}

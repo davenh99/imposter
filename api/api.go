@@ -35,10 +35,14 @@ func (s *APIServer) Run() error {
 	lm := NewLobbyManager()
 	baseRouter.Post("/lobbies", lm.CreateLobby)
 	baseRouter.Get("/lobbies/{code}", lm.GetLobby)
+	baseRouter.Post("/lobbies/{code}/start", lm.StartGame)
 	// websocket endpoint: /api/v1/ws/{code}?name=alice
 	baseRouter.Get("/ws/{code}", lm.ServeWS)
 
+	// wrap router with embedded static file handler (serves ui/dist)
+	handler := s.serveUI(router)
+
 	log.Println("listening on", s.addr)
 
-	return http.ListenAndServe(s.addr, router)
+	return http.ListenAndServe(s.addr, handler)
 }
