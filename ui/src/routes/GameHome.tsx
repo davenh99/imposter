@@ -5,6 +5,7 @@ import { GameInput } from "../components/GameInput";
 
 export default function GameHome() {
   const [code, setCode] = createSignal("");
+  const [username, setUsername] = createSignal("");
   const [codeError, setCodeError] = createSignal("");
   const [isCreating, setIsCreating] = createSignal(false);
   const [isJoining, setIsJoining] = createSignal(false);
@@ -70,17 +71,26 @@ export default function GameHome() {
         </div>
 
         <div class="space-y-3">
+          <h2 class="text-center">Join Lobby</h2>
           <GameInput
-            value={code()}
-            onInput={(val) => setCode(val.toUpperCase())}
-            label="Join Lobby"
-            placeholder="Enter code"
-            error={codeError()}
-            maxlength={6}
+            value={username()}
+            onInput={(val) => setUsername(val.toUpperCase())}
+            label="Name"
+            placeholder="Enter name"
           />
-          <GameButton onClick={joinLobby} variant="secondary" disabled={isJoining()} class="w-full">
-            {isJoining() ? "Joining..." : "Join"}
-          </GameButton>
+          <div class="flex space-x-2">
+            <GameInput
+              value={code()}
+              onInput={(val) => setCode(val.toUpperCase())}
+              placeholder="Enter code"
+              error={codeError()}
+              maxlength={6}
+              class="flex-2"
+            />
+            <GameButton class="w-[40%]" onClick={joinLobby} variant="secondary" disabled={isJoining()}>
+              {isJoining() ? "Joining..." : "Join"}
+            </GameButton>
+          </div>
         </div>
       </div>
     </div>
