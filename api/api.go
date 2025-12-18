@@ -31,7 +31,12 @@ func (s *APIServer) Run() error {
 	baseRouter := chi.NewRouter()
 	router.Mount("/api/v1", baseRouter)
 
-	// add route handlers here
+	// lobby manager and routes
+	lm := NewLobbyManager()
+	baseRouter.Post("/lobbies", lm.CreateLobby)
+	baseRouter.Get("/lobbies/{code}", lm.GetLobby)
+	// websocket endpoint: /api/v1/ws/{code}?name=alice
+	baseRouter.Get("/ws/{code}", lm.ServeWS)
 
 	log.Println("listening on", s.addr)
 
