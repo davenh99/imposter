@@ -14,8 +14,8 @@ export const GameButton: ParentComponent<GameButtonProps> = (props) => {
   const variantStyle = {
     primary: "bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:shadow-lg",
     secondary: "bg-pink-500 text-white hover:bg-pink-600",
-    green: "bg-green-500 text-white hover:bg-green-600",
-    red: "bg-red-500 text-white hover:bg-red-600",
+    green: "bg-emerald-500 text-white hover:bg-emerald-600",
+    red: "bg-orange-500 text-white hover:bg-orange-600",
   };
 
   return (

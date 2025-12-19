@@ -95,7 +95,7 @@ export default function GameHome() {
               onInput={(val) => setSearchParams({ code: val.toUpperCase() })}
               placeholder="Enter code"
               error={codeError()}
-              maxlength={6}
+              maxlength={4}
               class="flex-2"
             />
             <GameButton class="w-[40%]" onClick={joinLobby} variant="secondary" disabled={isJoining()}>

@@ -3,6 +3,15 @@ import { useParams, useNavigate, useLocation } from "@solidjs/router";
 import { GameButton } from "../components/GameButton";
 import { getApiUrl, getWebSocketUrl } from "../config/api";
 
+const imgs = [
+  "/img/50_emoj.png",
+  "/img/aggressive-laugh.jpg",
+  "/img/booty.jpg",
+  "/img/shrek.jpeg",
+  "/img/skull-balenciaga.gif",
+  "/img/tounge.webp",
+];
+
 export default function GameRoom() {
   const params = useParams();
   const loc = useLocation();
@@ -19,6 +28,7 @@ export default function GameRoom() {
   const [playerCount, setPlayerCount] = createSignal(0);
   const [wordBadVotes, setWordBadVotes] = createSignal(0);
   const [votedBad, setVotedBad] = createSignal<boolean>(false);
+  const [img, setImg] = createSignal<string>(imgs[Math.floor(Math.random() * imgs.length)]);
 
   let ws: WebSocket | null = null;
 
@@ -42,6 +52,7 @@ export default function GameRoom() {
   }
 
   function newGame() {
+    setImg(imgs[Math.floor(Math.random() * imgs.length)]);
     // request server to restart the game in this lobby (reuse existing imposter count)
     fetch(`${apiUrl}/api/v1/lobbies/${code}/restart`, { method: "POST" })
       .then((res) => {
@@ -140,7 +151,7 @@ export default function GameRoom() {
         {isHost ? (
           // Host screen (show host UI immediately, regardless of role/word)
           <div class="text-center">
-            <div class="text-6xl font-bold text-yellow-600 mb-4">🤓</div>
+            <img src={img()} alt="what" class="mx-auto mb-4 w-50 h-50 rounded-lg" />
             <h3 class="text-2xl font-bold text-gray-800 mb-4">Game In Progress</h3>
             <p class="text-gray-600 mb-8">who da imposter ඞ</p>
             <div>
@@ -188,11 +199,7 @@ export default function GameRoom() {
                   setVotedBad(true);
                 }}
                 variant="red"
-                class={`flex-1 transition-all ${
-                  votedBad() === true
-                    ? "bg-red-600 hover:bg-red-700 text-white font-bold"
-                    : "bg-red-300 hover:bg-red-400 text-red-900 opacity-40"
-                }`}
+                class={`flex-1 transition-all ${votedBad() ? "font-bold" : "opacity-40"}`}
               >
                 Hell yeah 👎
               </GameButton>
@@ -205,11 +212,7 @@ export default function GameRoom() {
                   setVotedBad(false);
                 }}
                 variant="green"
-                class={`flex-1 transition-all ${
-                  votedBad() === false
-                    ? "bg-green-600 hover:bg-green-700 text-white font-bold"
-                    : "bg-green-300 hover:bg-green-400 text-green-900 opacity-40"
-                }`}
+                class={`flex-1 transition-all ${!votedBad() ? "font-bold" : "opacity-40"}`}
               >
                 Nah, it's ok 👍
               </GameButton>

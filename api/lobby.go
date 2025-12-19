@@ -99,7 +99,7 @@ func (m *LobbyManager) logEvent(format string, args ...interface{}) {
 }
 
 func (m *LobbyManager) CreateLobby(w http.ResponseWriter, r *http.Request) {
-	code := generateCode(6)
+	code := generateCode(4)
 	l := &Lobby{
 		Code:       code,
 		Players:    []string{},
