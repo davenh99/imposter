@@ -54,7 +54,7 @@ export default function Lobby() {
       }
 
       console.log("Game started");
-      nav(`/game/${code}`);
+      nav(`/game/${code}?name=Host`);
     } catch (err) {
       console.error("Error starting game:", err);
       setImposterError("Error starting game. Please try again.");

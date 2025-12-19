@@ -1,14 +1,20 @@
 import { createSignal, onCleanup, onMount } from "solid-js";
-import { useParams, useNavigate } from "@solidjs/router";
+import { useParams, useNavigate, useLocation } from "@solidjs/router";
 import { GameButton } from "../components/GameButton";
 import { getApiUrl, getWebSocketUrl } from "../config/api";
 
 export default function GameRoom() {
   const params = useParams();
+  const loc = useLocation();
   const nav = useNavigate();
   const code = params.code;
-  const [role, setRole] = createSignal<string | null>(null);
-  const [word, setWord] = createSignal<string | null>(null);
+  const name = new URLSearchParams(loc.search).get("name") || "Player";
+  const isHost = name === "Host";
+  // Allow pre-filled role/word via query params when navigating from JoinLobby
+  const roleParam = new URLSearchParams(loc.search).get("role");
+  const wordParam = new URLSearchParams(loc.search).get("word");
+  const [role, setRole] = createSignal<string | null>(roleParam || null);
+  const [word, setWord] = createSignal<string | null>(wordParam || null);
   const apiUrl = getApiUrl();
 
   let ws: WebSocket | null = null;
@@ -37,16 +43,30 @@ export default function GameRoom() {
     }
 
     ws = new WebSocket(wsUrl());
+
+    ws.onopen = () => {
+      console.log("GameRoom WebSocket opened, sending join message");
+      // Send join message to register this connection
+      ws?.send(JSON.stringify({ type: "join", name: name }));
+    };
+
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
         console.log("GameRoom received message:", msg);
         if (msg.type === "game_started") {
           console.log("Game started, role:", msg.role, "word:", msg.word);
-          setRole(msg.role);
-          if (msg.role === "word") {
+          // If we already populated role/word from query params, prefer that; otherwise set from server
+          if (!role()) {
+            setRole(msg.role);
+          }
+          if (!word() && msg.word) {
             setWord(msg.word);
           }
+        }
+        // Ignore lobby_state messages in game room
+        if (msg.type === "lobby_state") {
+          console.log("Ignoring lobby_state in game room");
         }
       } catch (e) {
         console.error("WebSocket message error:", e);
@@ -73,7 +93,19 @@ export default function GameRoom() {
           <h2 class="text-3xl font-bold text-gray-800 mb-2">Game</h2>
         </div>
 
-        {role() === null ? (
+        {isHost ? (
+          // Host screen (show host UI immediately, regardless of role/word)
+          <div class="text-center">
+            <div class="text-6xl font-bold text-yellow-600 mb-4">👑</div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">Game In Progress</h3>
+            <p class="text-gray-600 mb-8">
+              The players are playing. The imposter is trying to guess the word.
+            </p>
+            <GameButton onClick={endGame} class="w-full bg-red-600 hover:bg-red-700">
+              End Game
+            </GameButton>
+          </div>
+        ) : role() === null ? (
           <div class="text-center text-gray-500 py-8">
             <p>Loading game...</p>
           </div>
@@ -96,10 +128,6 @@ export default function GameRoom() {
             <p class="text-gray-600">Don't let the imposter figure this out!</p>
           </div>
         )}
-
-        <GameButton onClick={endGame} class="w-full">
-          End Game
-        </GameButton>
       </div>
     </div>
   );

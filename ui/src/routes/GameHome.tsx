@@ -85,7 +85,7 @@ export default function GameHome() {
           <h2 class="text-center">Join Lobby</h2>
           <GameInput
             value={username()}
-            onInput={(val) => setUsername(val.toUpperCase())}
+            onInput={(val) => setUsername(val)}
             label="Name"
             placeholder="Enter name"
           />

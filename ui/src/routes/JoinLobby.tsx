@@ -59,7 +59,13 @@ export default function JoinLobby() {
         }
         if (msg.type === "game_started") {
           console.log("Game started, navigating to game room");
-          nav(`/game/${code}`);
+          // If role/word are present, include them so GameRoom can initialize immediately
+          const role = msg.role ? encodeURIComponent(msg.role) : null;
+          const word = msg.word ? encodeURIComponent(msg.word) : null;
+          let url = `/game/${code}?name=${encodeURIComponent(name)}`;
+          if (role) url += `&role=${role}`;
+          if (word) url += `&word=${word}`;
+          nav(url);
         }
       } catch (e) {
         console.error("WebSocket message error:", e);
