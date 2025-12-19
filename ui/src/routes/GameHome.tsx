@@ -2,6 +2,7 @@ import { createSignal } from "solid-js";
 import { useNavigate, useSearchParams } from "@solidjs/router";
 import { GameButton } from "../components/GameButton";
 import { GameInput } from "../components/GameInput";
+import { getApiUrl } from "../config/api";
 
 type SearchParams = {
   code?: string;
@@ -14,11 +15,12 @@ export default function GameHome() {
   const [isCreating, setIsCreating] = createSignal(false);
   const [isJoining, setIsJoining] = createSignal(false);
   const nav = useNavigate();
+  const apiUrl = getApiUrl();
 
   async function createLobby() {
     setIsCreating(true);
     try {
-      const res = await fetch(`/api/v1/lobbies`, { method: "POST" });
+      const res = await fetch(`${apiUrl}/api/v1/lobbies`, { method: "POST" });
       if (!res.ok) {
         console.error("Failed to create lobby");
         return;
@@ -48,7 +50,7 @@ export default function GameHome() {
 
     setIsJoining(true);
     try {
-      const res = await fetch(`/api/v1/lobbies/${searchParams.code.toLowerCase()}`);
+      const res = await fetch(`${apiUrl}/api/v1/lobbies/${searchParams.code.toLowerCase()}`);
       if (!res.ok) {
         setCodeError("Lobby code not found. Please check and try again.");
         return;

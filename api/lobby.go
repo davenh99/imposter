@@ -32,6 +32,7 @@ type Lobby struct {
 	PlayerRole map[string]string // "imposter" or "word"
 	CreatedAt  time.Time         `json:"created_at"`
 	clients    map[*websocket.Conn]string
+	hostConn   *websocket.Conn // separate connection for host
 	mu         sync.Mutex
 }
 
@@ -192,14 +193,24 @@ func (m *LobbyManager) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	// register
 	l.mu.Lock()
-	l.clients[conn] = name
-	l.Players = append(l.Players, name)
+	isHost := name == "Host"
+	if isHost {
+		l.hostConn = conn
+	} else {
+		l.clients[conn] = name
+		l.Players = append(l.Players, name)
+	}
 	l.mu.Unlock()
 
-	m.logEvent("Player joined lobby %s: %s (total players: %d)", code, name, len(l.Players))
-
-	// broadcast state
-	m.broadcastLobby(l)
+	if isHost {
+		m.logEvent("Host connected to lobby %s", code)
+		// Send host confirmation
+		_ = conn.WriteJSON(map[string]any{"type": "host_ready", "code": code})
+	} else {
+		m.logEvent("Player joined lobby %s: %s (total players: %d)", code, name, len(l.Players))
+		// broadcast state to all players
+		m.broadcastLobby(l)
+	}
 
 	// read loop
 	for {
@@ -215,12 +226,16 @@ func (m *LobbyManager) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	// cleanup on disconnect
 	l.mu.Lock()
-	delete(l.clients, conn)
-	// remove from Players slice
-	for i, p := range l.Players {
-		if p == name {
-			l.Players = append(l.Players[:i], l.Players[i+1:]...)
-			break
+	if isHost {
+		l.hostConn = nil
+	} else {
+		delete(l.clients, conn)
+		// remove from Players slice
+		for i, p := range l.Players {
+			if p == name {
+				l.Players = append(l.Players[:i], l.Players[i+1:]...)
+				break
+			}
 		}
 	}
 	l.mu.Unlock()
@@ -304,6 +319,16 @@ func (m *LobbyManager) StartGame(w http.ResponseWriter, r *http.Request) {
 			msg["word"] = l.GameWord
 		}
 		_ = c.WriteJSON(msg)
+	}
+
+	// Send game started notification to host
+	if l.hostConn != nil {
+		hostMsg := map[string]any{
+			"type":  "game_started",
+			"code":  code,
+			"count": len(l.Players),
+		}
+		_ = l.hostConn.WriteJSON(hostMsg)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

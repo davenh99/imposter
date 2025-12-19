@@ -1,7 +1,8 @@
-import { createSignal, onCleanup, onMount, createEffect } from "solid-js";
+import { createSignal, onCleanup, onMount } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { GameButton } from "../components/GameButton";
 import { GameInput } from "../components/GameInput";
+import { getApiUrl, getWebSocketUrl } from "../config/api";
 import QRCodeStyling from "qr-code-styling";
 
 export default function Lobby() {
@@ -13,14 +14,14 @@ export default function Lobby() {
   const [imposterError, setImposterError] = createSignal("");
   const [isStarting, setIsStarting] = createSignal(false);
   const [expiresIn, setExpiresIn] = createSignal<number | null>(null);
+  const apiUrl = getApiUrl();
   let qrContainer: HTMLDivElement | undefined;
 
   let ws: WebSocket | null = null;
-  let expiryInterval: NodeJS.Timeout | null = null;
+  let expiryInterval: ReturnType<typeof setInterval> | null = null;
 
   function wsUrl() {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    return `${proto}://${location.host}/api/v1/ws/${code}`;
+    return getWebSocketUrl(`/api/v1/ws/${code}`);
   }
 
   async function startGame() {
@@ -41,7 +42,7 @@ export default function Lobby() {
 
     setIsStarting(true);
     try {
-      const res = await fetch(`/api/v1/lobbies/${code}/start`, {
+      const res = await fetch(`${apiUrl}/api/v1/lobbies/${code}/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imposters: imposterCount }),
@@ -65,7 +66,7 @@ export default function Lobby() {
   onMount(async () => {
     // Check if lobby exists and get expiry time
     try {
-      const res = await fetch(`/api/v1/lobbies/${code}`);
+      const res = await fetch(`${apiUrl}/api/v1/lobbies/${code}`);
       if (!res.ok) {
         console.error("Lobby not found, redirecting to home");
         nav("/");
@@ -114,10 +115,23 @@ export default function Lobby() {
     }
 
     ws = new WebSocket(wsUrl());
+
+    ws.onopen = () => {
+      console.log("Lobby WebSocket opened, sending host join message");
+      // Host needs to send a join message to be registered as a client
+      ws?.send(JSON.stringify({ type: "join", name: "Host" }));
+    };
+
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
+        console.log("Lobby received message:", msg);
+        if (msg.type === "host_ready") {
+          console.log("Host connection ready");
+          // Host is ready, just confirm connection
+        }
         if (msg.type === "lobby_state") {
+          console.log("Updating lobby players:", msg.players);
           setPlayers(msg.players || []);
         }
         if (msg.type === "game_started") {
@@ -127,6 +141,14 @@ export default function Lobby() {
       } catch (e) {
         console.error("WebSocket message error:", e);
       }
+    };
+
+    ws.onerror = (ev) => {
+      console.error("WebSocket error in Lobby:", ev);
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket closed in Lobby");
     };
   });
 

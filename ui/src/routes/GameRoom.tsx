@@ -1,6 +1,7 @@
 import { createSignal, onCleanup, onMount } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { GameButton } from "../components/GameButton";
+import { getApiUrl, getWebSocketUrl } from "../config/api";
 
 export default function GameRoom() {
   const params = useParams();
@@ -8,12 +9,12 @@ export default function GameRoom() {
   const code = params.code;
   const [role, setRole] = createSignal<string | null>(null);
   const [word, setWord] = createSignal<string | null>(null);
+  const apiUrl = getApiUrl();
 
   let ws: WebSocket | null = null;
 
   function wsUrl() {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    return `${proto}://${location.host}/api/v1/ws/${code}`;
+    return getWebSocketUrl(`/api/v1/ws/${code}`);
   }
 
   function endGame() {
@@ -23,7 +24,7 @@ export default function GameRoom() {
   onMount(async () => {
     // Check if lobby exists
     try {
-      const res = await fetch(`/api/v1/lobbies/${code}`);
+      const res = await fetch(`${apiUrl}/api/v1/lobbies/${code}`);
       if (!res.ok) {
         console.error("Lobby not found, redirecting to home");
         nav("/");
@@ -39,6 +40,7 @@ export default function GameRoom() {
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
+        console.log("GameRoom received message:", msg);
         if (msg.type === "game_started") {
           console.log("Game started, role:", msg.role, "word:", msg.word);
           setRole(msg.role);
@@ -49,6 +51,14 @@ export default function GameRoom() {
       } catch (e) {
         console.error("WebSocket message error:", e);
       }
+    };
+
+    ws.onerror = (ev) => {
+      console.error("WebSocket error in GameRoom:", ev);
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket closed in GameRoom");
     };
   });
 

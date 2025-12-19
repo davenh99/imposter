@@ -1,6 +1,7 @@
 import { createSignal, onCleanup, onMount } from "solid-js";
 import { useParams, useNavigate, useLocation } from "@solidjs/router";
 import { GameButton } from "../components/GameButton";
+import { getApiUrl, getWebSocketUrl } from "../config/api";
 
 export default function JoinLobby() {
   const params = useParams();
@@ -10,12 +11,12 @@ export default function JoinLobby() {
   const name = new URLSearchParams(loc.search).get("name") || "Player";
   const [players, setPlayers] = createSignal<string[]>([]);
   const [isLeaving, setIsLeaving] = createSignal(false);
+  const apiUrl = getApiUrl();
 
   let ws: WebSocket | null = null;
 
   function wsUrl() {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    return `${proto}://${location.host}/api/v1/ws/${code}`;
+    return getWebSocketUrl(`/api/v1/ws/${code}`);
   }
 
   function leaveLobby() {
@@ -29,7 +30,7 @@ export default function JoinLobby() {
   onMount(async () => {
     // Check if lobby exists
     try {
-      const res = await fetch(`/api/v1/lobbies/${code}`);
+      const res = await fetch(`${apiUrl}/api/v1/lobbies/${code}`);
       if (!res.ok) {
         console.error("Lobby not found, redirecting to home");
         nav("/");
@@ -42,10 +43,18 @@ export default function JoinLobby() {
     }
 
     ws = new WebSocket(wsUrl());
+
+    ws.onopen = () => {
+      console.log("WebSocket opened, sending join message");
+      ws?.send(JSON.stringify({ type: "join", name: name }));
+    };
+
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
+        console.log("Received message:", msg);
         if (msg.type === "lobby_state") {
+          console.log("Updating players:", msg.players);
           setPlayers(msg.players || []);
         }
         if (msg.type === "game_started") {
@@ -57,9 +66,12 @@ export default function JoinLobby() {
       }
     };
 
-    // Send join message with player name
-    ws.onopen = () => {
-      ws?.send(JSON.stringify({ type: "join", name: name }));
+    ws.onerror = (ev) => {
+      console.error("WebSocket error:", ev);
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket closed");
     };
   });
 
