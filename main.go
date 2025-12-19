@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	addr := ":8080"
+	addr := "127.0.0.1:8080"
 	if a := os.Getenv("IMPOSTER_ADDR"); a != "" {
 		addr = a
 	}
