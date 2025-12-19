@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/gorilla/websocket"
@@ -20,6 +21,8 @@ func setupTestRouter() *chi.Mux {
 	baseRouter.Post("/lobbies", lm.CreateLobby)
 	baseRouter.Get("/lobbies/{code}", lm.GetLobby)
 	baseRouter.Post("/lobbies/{code}/start", lm.StartGame)
+	baseRouter.Post("/lobbies/{code}/end", lm.EndGame)
+	baseRouter.Post("/lobbies/{code}/restart", lm.RestartGame)
 	baseRouter.Get("/ws/{code}", lm.ServeWS)
 	router.Mount("/api/v1", baseRouter)
 	return router
@@ -527,4 +530,155 @@ func TestCompleteGameFlow(t *testing.T) {
 	}
 
 	t.Log("✓ Complete game flow successful!")
+}
+
+// TestEndAndRestartFlow tests that EndGame notifies clients and RestartGame starts a new round
+func TestEndAndRestartFlow(t *testing.T) {
+	router := setupTestRouter()
+
+	// Create lobby
+	req, _ := http.NewRequest("POST", "/api/v1/lobbies", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	var createResp createLobbyResp
+	json.NewDecoder(w.Body).Decode(&createResp)
+	code := createResp.Code
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/v1/ws/" + code
+
+	// Host connects
+	hostWS, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatal("host failed to connect:", err)
+	}
+	defer hostWS.Close()
+	hostWS.WriteJSON(map[string]string{"type": "join", "name": "Host"})
+	var hostMsg map[string]interface{}
+	hostWS.ReadJSON(&hostMsg)
+
+	// Players join
+	playerWSs := []*websocket.Conn{}
+	for i := 1; i <= 3; i++ {
+		ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+		if err != nil {
+			t.Fatalf("failed to connect player %d: %v", i, err)
+		}
+		name := "P" + string(rune('0'+i))
+		ws.WriteJSON(map[string]string{"type": "join", "name": name})
+		// drain lobby_state
+		var m map[string]interface{}
+		ws.ReadJSON(&m)
+		playerWSs = append(playerWSs, ws)
+	}
+
+	// Start game with 1 imposter
+	body := bytes.NewBufferString(`{"imposters": 1}`)
+	req, _ = http.NewRequest("POST", "/api/v1/lobbies/"+code+"/start", body)
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("failed to start game: %d", w.Code)
+	}
+
+	// Consume initial game_started messages
+	for _, ws := range playerWSs {
+		for {
+			var msg map[string]interface{}
+			if err := ws.ReadJSON(&msg); err != nil {
+				t.Fatalf("failed to read initial game_started: %v", err)
+			}
+			if msg["type"] == "game_started" {
+				break
+			}
+		}
+	}
+
+	// Now call restart
+	req, _ = http.NewRequest("POST", "/api/v1/lobbies/"+code+"/restart", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("failed to restart game: %d", w.Code)
+	}
+
+	// After restart, each player should receive another game_started
+	restartedCount := 0
+	for _, ws := range playerWSs {
+		for {
+			var msg map[string]interface{}
+			if err := ws.ReadJSON(&msg); err != nil {
+				t.Fatalf("failed to read restarted game_started: %v", err)
+			}
+			if msg["type"] == "game_started" {
+				restartedCount++
+				break
+			}
+		}
+	}
+
+	if restartedCount != len(playerWSs) {
+		t.Fatalf("expected %d restarted messages, got %d", len(playerWSs), restartedCount)
+	}
+
+	// Now call end
+	req, _ = http.NewRequest("POST", "/api/v1/lobbies/"+code+"/end", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("failed to end game: %d", w.Code)
+	}
+
+	// All players and host should receive game_ended; read with short deadline to avoid hangs
+	endedCount := 0
+	for _, ws := range playerWSs {
+		found := false
+		deadline := time.Now().Add(500 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			_ = ws.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			var msg map[string]interface{}
+			if err := ws.ReadJSON(&msg); err != nil {
+				// try again until deadline
+				continue
+			}
+			if msg["type"] == "game_ended" {
+				endedCount++
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("player did not receive game_ended before timeout")
+		}
+	}
+
+	// host
+	hostFound := false
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		_ = hostWS.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		var hostEnd map[string]interface{}
+		if err := hostWS.ReadJSON(&hostEnd); err != nil {
+			continue
+		}
+		if hostEnd["type"] == "game_ended" {
+			endedCount++
+			hostFound = true
+			break
+		}
+	}
+	if !hostFound {
+		t.Fatalf("host did not receive game_ended before timeout")
+	}
+
+	// cleanup
+	for _, ws := range playerWSs {
+		ws.Close()
+	}
+	hostWS.Close()
+
+	t.Log("✓ End and Restart flow works")
 }

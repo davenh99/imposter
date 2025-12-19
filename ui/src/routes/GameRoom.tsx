@@ -24,7 +24,31 @@ export default function GameRoom() {
   }
 
   function endGame() {
-    nav("/");
+    // tell server to end the game and return players to lobby
+    fetch(`${apiUrl}/api/v1/lobbies/${code}/end`, { method: "POST" })
+      .then((res) => {
+        if (!res.ok) throw new Error("failed to end game");
+        // navigate host back to lobby
+        nav(`/lobby/${code}?name=Host`);
+      })
+      .catch((err) => {
+        console.error("End game failed:", err);
+        // still navigate back as a fallback
+        nav(`/lobby/${code}?name=Host`);
+      });
+  }
+
+  function newGame() {
+    // request server to restart the game in this lobby (reuse existing imposter count)
+    fetch(`${apiUrl}/api/v1/lobbies/${code}/restart`, { method: "POST" })
+      .then((res) => {
+        if (!res.ok) throw new Error("failed to restart game");
+        // host stays in game room; players will get new game_started messages
+        console.log("Game restarted");
+      })
+      .catch((err) => {
+        console.error("Restart game failed:", err);
+      });
   }
 
   onMount(async () => {
@@ -54,6 +78,16 @@ export default function GameRoom() {
       try {
         const msg = JSON.parse(ev.data);
         console.log("GameRoom received message:", msg);
+        if (msg.type === "game_ended") {
+          console.log("Game ended, navigating back to lobby");
+          // navigate back to lobby; preserve player name
+          if (isHost) {
+            nav(`/lobby/${code}?name=Host`);
+          } else {
+            nav(`/lobby/${code}?name=${encodeURIComponent(name)}`);
+          }
+          return;
+        }
         if (msg.type === "game_started") {
           console.log("Game started, role:", msg.role, "word:", msg.word);
           // If we already populated role/word from query params, prefer that; otherwise set from server
@@ -101,9 +135,14 @@ export default function GameRoom() {
             <p class="text-gray-600 mb-8">
               The players are playing. The imposter is trying to guess the word.
             </p>
-            <GameButton onClick={endGame} class="w-full bg-red-600 hover:bg-red-700">
-              End Game
-            </GameButton>
+            <div class="flex gap-3">
+              <GameButton onClick={endGame} class="flex-1 bg-red-600 hover:bg-red-700">
+                End Game
+              </GameButton>
+              <GameButton onClick={newGame} variant="secondary" class="flex-1">
+                New Game
+              </GameButton>
+            </div>
           </div>
         ) : role() === null ? (
           <div class="text-center text-gray-500 py-8">

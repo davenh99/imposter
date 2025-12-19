@@ -339,6 +339,121 @@ func (m *LobbyManager) StartGame(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "game started"})
 }
 
+// EndGame ends the current game and notifies all clients to return to the lobby
+func (m *LobbyManager) EndGame(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+
+	m.mu.Lock()
+	l, ok := m.lobbies[code]
+	m.mu.Unlock()
+	if !ok {
+		http.Error(w, "lobby not found", http.StatusNotFound)
+		return
+	}
+
+	l.mu.Lock()
+	l.GameState = "ended"
+	l.mu.Unlock()
+
+	m.logEvent("Game ended in lobby %s", code)
+
+	// broadcast game_ended to all players
+	msg := map[string]any{"type": "game_ended", "code": code}
+	l.mu.Lock()
+	for c := range l.clients {
+		_ = c.WriteJSON(msg)
+	}
+	if l.hostConn != nil {
+		_ = l.hostConn.WriteJSON(msg)
+	}
+	l.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "game ended"})
+}
+
+// RestartGame assigns a new word and roles and broadcasts a new game_started to all players
+func (m *LobbyManager) RestartGame(w http.ResponseWriter, r *http.Request) {
+	code := chi.URLParam(r, "code")
+	var req struct {
+		Imposters int `json:"imposters"`
+	}
+	// body is optional; if provided we'll use it
+	if r.Body != nil {
+		// only attempt to decode if there's content
+		if r.ContentLength != 0 {
+			_ = json.NewDecoder(r.Body).Decode(&req)
+		}
+	}
+
+	m.mu.Lock()
+	l, ok := m.lobbies[code]
+	m.mu.Unlock()
+	if !ok {
+		http.Error(w, "lobby not found", http.StatusNotFound)
+		return
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	// determine imposters count to use
+	imposters := req.Imposters
+	if imposters <= 0 {
+		imposters = l.Imposters
+	}
+	if imposters < 1 || imposters >= len(l.Players) {
+		http.Error(w, fmt.Sprintf("imposters must be 1 to %d", len(l.Players)-1), http.StatusBadRequest)
+		return
+	}
+
+	l.Imposters = imposters
+	l.GameState = "started"
+	idx, _ := rand.Int(rand.Reader, big.NewInt(int64(len(GameWords))))
+	l.GameWord = GameWords[idx.Int64()]
+	l.PlayerRole = make(map[string]string)
+
+	// Assign roles randomly (simple prefix assign; could be improved)
+	impostersNeeded := imposters
+	for _, player := range l.Players {
+		if impostersNeeded > 0 {
+			l.PlayerRole[player] = "imposter"
+			impostersNeeded--
+		} else {
+			l.PlayerRole[player] = "word"
+		}
+	}
+
+	m.logEvent("Game restarted in lobby %s with word '%s' and %d imposters", code, l.GameWord, imposters)
+
+	// Broadcast game start with roles to each player
+	for c, name := range l.clients {
+		role := l.PlayerRole[name]
+		msg := map[string]any{
+			"type": "game_started",
+			"role": role,
+			"code": code,
+		}
+		if role == "word" {
+			msg["word"] = l.GameWord
+		}
+		_ = c.WriteJSON(msg)
+	}
+
+	// Send game started notification to host
+	if l.hostConn != nil {
+		hostMsg := map[string]any{
+			"type":  "game_started",
+			"code":  code,
+			"count": len(l.Players),
+		}
+		_ = l.hostConn.WriteJSON(hostMsg)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "game restarted"})
+}
+
 func generateCode(n int) string {
 	letters := "abcdefghijklmnopqrstuvwxyz"
 	out := make([]byte, n)

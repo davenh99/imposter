@@ -136,7 +136,8 @@ export default function Lobby() {
         }
         if (msg.type === "game_started") {
           console.log("Game started via WebSocket");
-          nav(`/game/${code}`);
+          // ensure host remains identified when navigating to game room
+          nav(`/game/${code}?name=Host`);
         }
       } catch (e) {
         console.error("WebSocket message error:", e);

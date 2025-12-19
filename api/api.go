@@ -36,6 +36,8 @@ func (s *APIServer) Run() error {
 	baseRouter.Post("/lobbies", lm.CreateLobby)
 	baseRouter.Get("/lobbies/{code}", lm.GetLobby)
 	baseRouter.Post("/lobbies/{code}/start", lm.StartGame)
+	baseRouter.Post("/lobbies/{code}/end", lm.EndGame)
+	baseRouter.Post("/lobbies/{code}/restart", lm.RestartGame)
 	// websocket endpoint: /api/v1/ws/{code}?name=alice
 	baseRouter.Get("/ws/{code}", lm.ServeWS)
 
