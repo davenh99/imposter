@@ -130,11 +130,9 @@ export default function GameRoom() {
         {isHost ? (
           // Host screen (show host UI immediately, regardless of role/word)
           <div class="text-center">
-            <div class="text-6xl font-bold text-yellow-600 mb-4">👑</div>
+            <div class="text-6xl font-bold text-yellow-600 mb-4">🫩</div>
             <h3 class="text-2xl font-bold text-gray-800 mb-4">Game In Progress</h3>
-            <p class="text-gray-600 mb-8">
-              The players are playing. The imposter is trying to guess the word.
-            </p>
+            <p class="text-gray-600 mb-8">who da imposter ඞ</p>
             <div class="flex gap-3">
               <GameButton onClick={endGame} class="flex-1 bg-red-600 hover:bg-red-700">
                 End Game
@@ -150,12 +148,10 @@ export default function GameRoom() {
           </div>
         ) : role() === "imposter" ? (
           <div class="text-center">
-            <div class="text-6xl font-bold text-red-600 mb-4">🎭</div>
+            {/* <div class="text-6xl font-bold text-red-600 mb-4">🎭</div> */}
+            <img src="/img/hamster.svg" alt="Imposter" class="mx-auto mb-4 w-50 h-50" />
             <h3 class="text-2xl font-bold text-gray-800 mb-4">You are the Imposter!</h3>
-            <p class="text-gray-600 mb-8">
-              Your goal is to figure out what the word is by asking questions and listening to the other
-              players.
-            </p>
+            <p class="text-gray-600 mb-8">Don't get found out!!!! 😳</p>
           </div>
         ) : (
           <div class="text-center">

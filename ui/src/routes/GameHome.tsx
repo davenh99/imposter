@@ -66,7 +66,7 @@ export default function GameHome() {
   }
 
   return (
-    <div class="min-h-screen bg-[url(/images/46480.jpg)] flex items-center justify-center p-4">
+    <div class="min-h-screen bg-cover bg-[url(/img/46840.jpg)] flex items-center justify-center p-4">
       <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
         <h1 class="text-4xl font-bold text-center mb-2 text-gray-800">Imposter 🥸</h1>
         <p class="text-center text-gray-500 mb-8 text-sm">Hell yeah</p>

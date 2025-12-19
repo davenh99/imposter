@@ -158,7 +158,7 @@ export default function Lobby() {
   });
 
   return (
-    <div class="min-h-screen bg-[url(/images/46480.jpg)] flex items-center justify-center p-4">
+    <div class="min-h-screen bg-cover bg-[url(/img/46840.jpg)] flex items-center justify-center p-4">
       <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
         <div class="text-center mb-8">
           <h2 class="text-3xl font-bold text-gray-800 mb-2">Lobby</h2>
