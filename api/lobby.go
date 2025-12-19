@@ -250,6 +250,10 @@ func (m *LobbyManager) broadcastLobby(l *Lobby) {
 	for c := range l.clients {
 		_ = c.WriteJSON(state)
 	}
+	// Also send to host so they see player updates
+	if l.hostConn != nil {
+		_ = l.hostConn.WriteJSON(state)
+	}
 	l.mu.Unlock()
 }
 
