@@ -8,6 +8,16 @@ import (
 	"github.com/go-chi/cors"
 )
 
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *loggingResponseWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
 type APIServer struct {
 	addr string
 }
