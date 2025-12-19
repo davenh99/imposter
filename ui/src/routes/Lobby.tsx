@@ -1,7 +1,8 @@
-import { createSignal, onCleanup, onMount } from "solid-js";
+import { createSignal, onCleanup, onMount, createEffect } from "solid-js";
 import { useParams, useNavigate } from "@solidjs/router";
 import { GameButton } from "../components/GameButton";
 import { GameInput } from "../components/GameInput";
+import QRCodeStyling from "qr-code-styling";
 
 export default function Lobby() {
   const params = useParams();
@@ -11,8 +12,11 @@ export default function Lobby() {
   const [imposters, setImposters] = createSignal("");
   const [imposterError, setImposterError] = createSignal("");
   const [isStarting, setIsStarting] = createSignal(false);
+  const [expiresIn, setExpiresIn] = createSignal<number | null>(null);
+  let qrContainer: HTMLDivElement | undefined;
 
   let ws: WebSocket | null = null;
+  let expiryInterval: NodeJS.Timeout | null = null;
 
   function wsUrl() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -58,7 +62,57 @@ export default function Lobby() {
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
+    // Check if lobby exists and get expiry time
+    try {
+      const res = await fetch(`/api/v1/lobbies/${code}`);
+      if (!res.ok) {
+        console.error("Lobby not found, redirecting to home");
+        nav("/");
+        return;
+      }
+      const data = await res.json();
+      setExpiresIn(data.expires_in);
+    } catch (err) {
+      console.error("Error checking lobby:", err);
+      nav("/");
+      return;
+    }
+
+    // Update expiry countdown every second
+    expiryInterval = setInterval(() => {
+      setExpiresIn((prev) => {
+        if (prev === null || prev <= 0) {
+          clearInterval(expiryInterval!);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Generate QR code
+    const qrCode = new QRCodeStyling({
+      width: 200,
+      height: 200,
+      data: `${window.location.origin}/?code=${code}`,
+      image: "",
+      dotsOptions: {
+        color: "#000000",
+        type: "rounded",
+      },
+      backgroundOptions: {
+        color: "#ffffff",
+      },
+      cornersSquareOptions: {
+        type: "extra-rounded",
+      },
+    });
+
+    if (qrContainer) {
+      qrContainer.innerHTML = "";
+      qrCode.append(qrContainer);
+    }
+
     ws = new WebSocket(wsUrl());
     ws.onmessage = (ev) => {
       try {
@@ -78,6 +132,7 @@ export default function Lobby() {
 
   onCleanup(() => {
     if (ws) ws.close();
+    if (expiryInterval) clearInterval(expiryInterval);
   });
 
   return (
@@ -86,11 +141,20 @@ export default function Lobby() {
         <div class="text-center mb-8">
           <h2 class="text-3xl font-bold text-gray-800 mb-2">Lobby</h2>
           <p class="text-gray-500 text-sm">You are the host</p>
+          {expiresIn() !== null && (
+            <p class="text-xs text-amber-600 mt-2 font-semibold">
+              Server expiring in {Math.max(0, expiresIn()!)}s
+            </p>
+          )}
         </div>
 
         <div class="bg-gray-100 rounded-lg p-6 mb-6">
           <p class="text-gray-600 text-sm mb-2">Share this code with friends:</p>
           <p class="text-4xl font-bold text-blue-600 text-center tracking-wider">{code}</p>
+        </div>
+
+        <div class="bg-white border-2 border-gray-300 rounded-lg p-4 mb-6 flex justify-center">
+          <div ref={qrContainer} class="flex justify-center items-center" />
         </div>
 
         <div class="mb-6">

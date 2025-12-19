@@ -30,6 +30,7 @@ type Lobby struct {
 	GameState  string            `json:"game_state"` // "waiting", "started", "ended"
 	GameWord   string            `json:"game_word"`
 	PlayerRole map[string]string // "imposter" or "word"
+	CreatedAt  time.Time         `json:"created_at"`
 	clients    map[*websocket.Conn]string
 	mu         sync.Mutex
 }
@@ -44,9 +45,43 @@ func NewLobbyManager() *LobbyManager {
 	if err != nil {
 		log.Println("failed to open log file:", err)
 	}
-	return &LobbyManager{
+	lm := &LobbyManager{
 		lobbies: make(map[string]*Lobby),
 		logFile: logFile,
+	}
+
+	// Start cleanup goroutine to remove expired lobbies every minute
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			lm.cleanupExpiredLobbies()
+		}
+	}()
+
+	return lm
+}
+
+func (m *LobbyManager) cleanupExpiredLobbies() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now()
+	expiry := 15 * time.Minute
+
+	for code, lobby := range m.lobbies {
+		if now.Sub(lobby.CreatedAt) > expiry {
+			// Close all WebSocket connections for this lobby
+			lobby.mu.Lock()
+			for conn := range lobby.clients {
+				conn.Close()
+			}
+			lobby.mu.Unlock()
+
+			// Remove the lobby
+			delete(m.lobbies, code)
+			m.logEvent("Lobby expired and removed: %s", code)
+		}
 	}
 }
 
@@ -69,6 +104,7 @@ func (m *LobbyManager) CreateLobby(w http.ResponseWriter, r *http.Request) {
 		GameState:  "waiting",
 		GameWord:   "",
 		PlayerRole: make(map[string]string),
+		CreatedAt:  time.Now(),
 		clients:    make(map[*websocket.Conn]string),
 	}
 
@@ -93,10 +129,19 @@ func (m *LobbyManager) GetLobby(w http.ResponseWriter, r *http.Request) {
 	}
 
 	l.mu.Lock()
+	expiresAt := l.CreatedAt.Add(15 * time.Minute)
+	timeRemaining := time.Until(expiresAt)
 	resp := struct {
-		Code    string   `json:"code"`
-		Players []string `json:"players"`
-	}{Code: l.Code, Players: append([]string(nil), l.Players...)}
+		Code      string    `json:"code"`
+		Players   []string  `json:"players"`
+		ExpiresIn int64     `json:"expires_in"` // seconds
+		ExpiresAt time.Time `json:"expires_at"`
+	}{
+		Code:      l.Code,
+		Players:   append([]string(nil), l.Players...),
+		ExpiresIn: int64(timeRemaining.Seconds()),
+		ExpiresAt: expiresAt,
+	}
 	l.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")

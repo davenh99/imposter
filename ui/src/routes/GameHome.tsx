@@ -1,10 +1,14 @@
 import { createSignal } from "solid-js";
-import { useNavigate } from "@solidjs/router";
+import { useNavigate, useSearchParams } from "@solidjs/router";
 import { GameButton } from "../components/GameButton";
 import { GameInput } from "../components/GameInput";
 
+type SearchParams = {
+  code?: string;
+};
+
 export default function GameHome() {
-  const [code, setCode] = createSignal("");
+  const [searchParams, setSearchParams] = useSearchParams<SearchParams>();
   const [username, setUsername] = createSignal("");
   const [codeError, setCodeError] = createSignal("");
   const [isCreating, setIsCreating] = createSignal(false);
@@ -32,20 +36,25 @@ export default function GameHome() {
   async function joinLobby() {
     setCodeError("");
 
-    if (!code().trim()) {
+    if (!username().trim()) {
+      setCodeError("Please enter your name");
+      return;
+    }
+
+    if (!searchParams.code?.trim()) {
       setCodeError("Please enter a lobby code");
       return;
     }
 
     setIsJoining(true);
     try {
-      const res = await fetch(`/api/v1/lobbies/${code().toLowerCase()}`);
+      const res = await fetch(`/api/v1/lobbies/${searchParams.code.toLowerCase()}`);
       if (!res.ok) {
         setCodeError("Lobby code not found. Please check and try again.");
         return;
       }
-      console.log("Joining lobby:", code());
-      nav(`/join/${code().toLowerCase()}`);
+      console.log("Joining lobby:", searchParams.code);
+      nav(`/join/${searchParams.code.toLowerCase()}?name=${encodeURIComponent(username())}`);
     } catch (err) {
       console.error("Error joining lobby:", err);
       setCodeError("Error joining lobby. Please try again.");
@@ -80,8 +89,8 @@ export default function GameHome() {
           />
           <div class="flex space-x-2">
             <GameInput
-              value={code()}
-              onInput={(val) => setCode(val.toUpperCase())}
+              value={searchParams.code || ""}
+              onInput={(val) => setSearchParams({ code: val.toUpperCase() })}
               placeholder="Enter code"
               error={codeError()}
               maxlength={6}

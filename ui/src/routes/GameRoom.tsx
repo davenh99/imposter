@@ -20,7 +20,21 @@ export default function GameRoom() {
     nav("/");
   }
 
-  onMount(() => {
+  onMount(async () => {
+    // Check if lobby exists
+    try {
+      const res = await fetch(`/api/v1/lobbies/${code}`);
+      if (!res.ok) {
+        console.error("Lobby not found, redirecting to home");
+        nav("/");
+        return;
+      }
+    } catch (err) {
+      console.error("Error checking lobby:", err);
+      nav("/");
+      return;
+    }
+
     ws = new WebSocket(wsUrl());
     ws.onmessage = (ev) => {
       try {
