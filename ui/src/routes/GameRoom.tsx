@@ -18,6 +18,7 @@ export default function GameRoom() {
   const apiUrl = getApiUrl();
   const [playerCount, setPlayerCount] = createSignal(0);
   const [wordBadVotes, setWordBadVotes] = createSignal(0);
+  const [votedBad, setVotedBad] = createSignal<boolean>(false);
 
   let ws: WebSocket | null = null;
 
@@ -80,6 +81,11 @@ export default function GameRoom() {
       try {
         const msg = JSON.parse(ev.data);
         console.log("GameRoom received message:", msg);
+        if (msg.type === "word_vote_update") {
+          const count = typeof msg.count === "number" ? msg.count : Number(msg.count || 0);
+          setWordBadVotes(count);
+          return;
+        }
         if (msg.type === "game_ended") {
           console.log("Game ended, navigating back to lobby/join");
           // Host should return to lobby view; players should go to the join view
@@ -102,7 +108,9 @@ export default function GameRoom() {
         }
         // Ignore lobby_state messages in game room
         if (msg.type === "lobby_state") {
-          console.log("Ignoring lobby_state in game room");
+          console.log("Updating player count from lobby_state in game room");
+          const players = msg.players || [];
+          setPlayerCount((players as any[]).length || 0);
         }
       } catch (e) {
         console.error("WebSocket message error:", e);
@@ -138,11 +146,11 @@ export default function GameRoom() {
             <div>
               <h4>Does the word suck ?? 😲</h4>
               <div class="text-4xl font-bold text-blue-600 mb-4">
-                {wordBadVotes()}/{playerCount()}
+                {wordBadVotes()}/{playerCount() - 1}
               </div>
             </div>
             <div class="flex gap-3">
-              <GameButton onClick={endGame} class="flex-1 bg-red-600 hover:bg-red-700">
+              <GameButton onClick={endGame} variant="red" class="flex-1">
                 End Game
               </GameButton>
               <GameButton onClick={newGame} variant="secondary" class="flex-1">
@@ -169,21 +177,43 @@ export default function GameRoom() {
               <p class="text-4xl font-bold text-blue-600">{word()}</p>
             </div>
             <p class="text-gray-600">Don't let the imposter figure this out!</p>
-            <p>Does the word suck?</p>
-            <GameButton
-              onClick={() => {
-                // vote that the word is bad
-              }}
-            >
-              Hell yeah
-            </GameButton>
-            <GameButton
-              onClick={() => {
-                // remove word is bad vote
-              }}
-            >
-              Nah, it's ok
-            </GameButton>
+            <p class="pt-3">Does the word suck?</p>
+            <div class="flex gap-3 justify-center mt-4 w-full">
+              <GameButton
+                onClick={() => {
+                  // vote that the word is bad
+                  if (ws) {
+                    ws.send(JSON.stringify({ type: "vote_bad", voted: true }));
+                  }
+                  setVotedBad(true);
+                }}
+                variant="red"
+                class={`flex-1 transition-all ${
+                  votedBad() === true
+                    ? "bg-red-600 hover:bg-red-700 text-white font-bold"
+                    : "bg-red-300 hover:bg-red-400 text-red-900 opacity-40"
+                }`}
+              >
+                Hell yeah 👎
+              </GameButton>
+              <GameButton
+                onClick={() => {
+                  // remove word is bad vote
+                  if (ws) {
+                    ws.send(JSON.stringify({ type: "vote_bad", voted: false }));
+                  }
+                  setVotedBad(false);
+                }}
+                variant="green"
+                class={`flex-1 transition-all ${
+                  votedBad() === false
+                    ? "bg-green-600 hover:bg-green-700 text-white font-bold"
+                    : "bg-green-300 hover:bg-green-400 text-green-900 opacity-40"
+                }`}
+              >
+                Nah, it's ok 👍
+              </GameButton>
+            </div>
           </div>
         )}
       </div>

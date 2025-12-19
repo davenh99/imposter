@@ -253,9 +253,33 @@ func (m *LobbyManager) ServeWS(w http.ResponseWriter, r *http.Request) {
 		if err := conn.ReadJSON(&msg); err != nil {
 			break
 		}
-		// Handle other message types here if needed
-		if t, ok := msg["type"].(string); ok && t == "start" {
-			m.broadcastMessage(l, map[string]any{"type": "start_game"})
+		// Handle other message types here
+		if t, ok := msg["type"].(string); ok {
+			switch t {
+			case "start":
+				m.broadcastMessage(l, map[string]any{"type": "start_game"})
+			case "vote_bad":
+				// vote message: { type: "vote_bad", voted: true/false }
+				if v, ok := msg["voted"].(bool); ok {
+					l.mu.Lock()
+					if l.PlayerWordVotedBad == nil {
+						l.PlayerWordVotedBad = make(map[string]bool)
+					}
+					if v {
+						l.PlayerWordVotedBad[name] = true
+					} else {
+						delete(l.PlayerWordVotedBad, name)
+					}
+					voteCount := len(l.PlayerWordVotedBad)
+					l.mu.Unlock()
+					// broadcast updated vote count to host and players
+					voteMsg := map[string]any{"type": "word_vote_update", "count": voteCount, "code": code}
+					m.broadcastMessage(l, voteMsg)
+					if l.hostConn != nil {
+						_ = l.hostConn.WriteJSON(voteMsg)
+					}
+				}
+			}
 		}
 	}
 
@@ -453,7 +477,12 @@ func (m *LobbyManager) RestartGame(w http.ResponseWriter, r *http.Request) {
 	l.GameWord = GameWords[idx.Int64()]
 	l.PlayerRole = make(map[string]string)
 
-	// Assign roles randomly (simple prefix assign; could be improved)
+	// Shuffle players
+	mRand.Shuffle(len(l.Players), func(i, j int) {
+		l.Players[i], l.Players[j] = l.Players[j], l.Players[i]
+	})
+
+	// Assign roles
 	impostersNeeded := imposters
 	for _, player := range l.Players {
 		if impostersNeeded > 0 {
