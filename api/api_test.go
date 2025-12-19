@@ -90,7 +90,7 @@ func TestGetLobby(t *testing.T) {
 		t.Fatalf("expected code %s, got %s", code, getLobbyResp.Code)
 	}
 
-	if getLobbyResp.Players != nil && len(getLobbyResp.Players) > 0 {
+	if len(getLobbyResp.Players) > 0 {
 		t.Fatalf("expected no players initially, got %v", getLobbyResp.Players)
 	}
 

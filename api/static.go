@@ -52,6 +52,5 @@ func (s *APIServer) serveUI(router http.Handler) http.Handler {
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/index.html"
 		fileServer.ServeHTTP(w, r2)
-		return
 	})
 }
