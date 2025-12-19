@@ -217,6 +217,8 @@ func (m *LobbyManager) ServeWS(w http.ResponseWriter, r *http.Request) {
 		m.logEvent("Host connected to lobby %s", code)
 		// Send host confirmation
 		_ = conn.WriteJSON(map[string]any{"type": "host_ready", "code": code})
+		// Send host the current player list immediately
+		m.broadcastLobby(l)
 		// If a game is already in progress, notify host with player count
 		if currentState == "started" {
 			l.mu.Lock()
