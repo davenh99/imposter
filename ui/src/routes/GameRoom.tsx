@@ -89,13 +89,13 @@ export default function GameRoom() {
           return;
         }
         if (msg.type === "game_started") {
-          console.log("Game started, role:", msg.role, "word:", msg.word);
-          // If we already populated role/word from query params, prefer that; otherwise set from server
-          if (!role()) {
-            setRole(msg.role);
-          }
-          if (!word() && msg.word) {
+          console.log("Game started (or restarted), role:", msg.role, "word:", msg.word);
+          // Always update role/word on game_started so a restart takes effect for connected players
+          setRole(msg.role || null);
+          if (msg.word) {
             setWord(msg.word);
+          } else {
+            setWord(null);
           }
         }
         // Ignore lobby_state messages in game room
