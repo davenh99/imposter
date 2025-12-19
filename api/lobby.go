@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	mRand "math/rand"
 	"net/http"
 	"os"
 	"sync"
@@ -329,7 +330,12 @@ func (m *LobbyManager) StartGame(w http.ResponseWriter, r *http.Request) {
 	l.GameWord = GameWords[idx.Int64()]
 	l.PlayerRole = make(map[string]string)
 
-	// Assign roles randomly
+	// Shuffle players
+	mRand.Shuffle(len(l.Players), func(i, j int) {
+		l.Players[i], l.Players[j] = l.Players[j], l.Players[i]
+	})
+
+	// Assign roles
 	impostersNeeded := req.Imposters
 	for _, player := range l.Players {
 		if impostersNeeded > 0 {
