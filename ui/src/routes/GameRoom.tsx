@@ -66,12 +66,12 @@ export default function GameRoom() {
       return;
     }
 
-    ws = new WebSocket(wsUrl());
+    // include our name in the websocket URL to ensure server registers us immediately
+    ws = new WebSocket(wsUrl() + `?name=${encodeURIComponent(name)}`);
 
     ws.onopen = () => {
       console.log("GameRoom WebSocket opened, sending join message");
-      // Send join message to register this connection
-      ws?.send(JSON.stringify({ type: "join", name: name }));
+      // registration via query param ensures server knows our name; no extra join needed
     };
 
     ws.onmessage = (ev) => {
@@ -79,12 +79,12 @@ export default function GameRoom() {
         const msg = JSON.parse(ev.data);
         console.log("GameRoom received message:", msg);
         if (msg.type === "game_ended") {
-          console.log("Game ended, navigating back to lobby");
-          // navigate back to lobby; preserve player name
+          console.log("Game ended, navigating back to lobby/join");
+          // Host should return to lobby view; players should go to the join view
           if (isHost) {
             nav(`/lobby/${code}?name=Host`);
           } else {
-            nav(`/lobby/${code}?name=${encodeURIComponent(name)}`);
+            nav(`/join/${code}?name=${encodeURIComponent(name)}`);
           }
           return;
         }

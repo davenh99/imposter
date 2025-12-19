@@ -170,12 +170,17 @@ func (m *LobbyManager) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Wait for join message with player name
+	// Wait for join message with player name. Accept name via query param to avoid race.
 	var joinMsg map[string]any
-	if err := conn.ReadJSON(&joinMsg); err != nil {
-		log.Println("failed to read join message:", err)
-		conn.Close()
-		return
+	// If client provided name in query params (e.g., ?name=Host), use that immediately
+	if qname := r.URL.Query().Get("name"); qname != "" {
+		joinMsg = map[string]any{"type": "join", "name": qname}
+	} else {
+		if err := conn.ReadJSON(&joinMsg); err != nil {
+			log.Println("failed to read join message:", err)
+			conn.Close()
+			return
+		}
 	}
 
 	if joinMsg["type"] != "join" {
@@ -200,15 +205,41 @@ func (m *LobbyManager) ServeWS(w http.ResponseWriter, r *http.Request) {
 		l.clients[conn] = name
 		l.Players = append(l.Players, name)
 	}
+	// capture current game state/word/role for use below
+	currentState := l.GameState
+	currentWord := l.GameWord
+	// copy role map reference
+	roleMap := l.PlayerRole
 	l.mu.Unlock()
 
 	if isHost {
 		m.logEvent("Host connected to lobby %s", code)
 		// Send host confirmation
 		_ = conn.WriteJSON(map[string]any{"type": "host_ready", "code": code})
+		// If a game is already in progress, notify host with player count
+		if currentState == "started" {
+			l.mu.Lock()
+			count := len(l.Players)
+			l.mu.Unlock()
+			_ = conn.WriteJSON(map[string]any{"type": "game_started", "code": code, "count": count})
+		}
 	} else {
 		m.logEvent("Player joined lobby %s: %s (total players: %d)", code, name, len(l.Players))
-		// broadcast state to all players
+		// If a game is already in progress, send this player their role/word immediately
+		if currentState == "started" {
+			role := "word"
+			if roleMap != nil {
+				if r, ok := roleMap[name]; ok {
+					role = r
+				}
+			}
+			msg := map[string]any{"type": "game_started", "role": role, "code": code}
+			if role == "word" {
+				msg["word"] = currentWord
+			}
+			_ = conn.WriteJSON(msg)
+		}
+		// broadcast state to all players (so host sees updates and other players)
 		m.broadcastLobby(l)
 	}
 

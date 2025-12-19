@@ -42,12 +42,8 @@ export default function JoinLobby() {
       return;
     }
 
-    ws = new WebSocket(wsUrl());
-
-    ws.onopen = () => {
-      console.log("WebSocket opened, sending join message");
-      ws?.send(JSON.stringify({ type: "join", name: name }));
-    };
+    // include name in query param so server registers us immediately
+    ws = new WebSocket(wsUrl() + `?name=${encodeURIComponent(name)}`);
 
     ws.onmessage = (ev) => {
       try {

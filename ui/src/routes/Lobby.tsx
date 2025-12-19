@@ -10,7 +10,7 @@ export default function Lobby() {
   const nav = useNavigate();
   const code = params.code;
   const [players, setPlayers] = createSignal<string[]>([]);
-  const [imposters, setImposters] = createSignal("");
+  const [imposters, setImposters] = createSignal("1");
   const [imposterError, setImposterError] = createSignal("");
   const [isStarting, setIsStarting] = createSignal(false);
   const [expiresIn, setExpiresIn] = createSignal<number | null>(null);
@@ -114,12 +114,11 @@ export default function Lobby() {
       qrCode.append(qrContainer);
     }
 
-    ws = new WebSocket(wsUrl());
+    // include name in query param so server registers host immediately
+    ws = new WebSocket(wsUrl() + `?name=Host`);
 
     ws.onopen = () => {
-      console.log("Lobby WebSocket opened, sending host join message");
-      // Host needs to send a join message to be registered as a client
-      ws?.send(JSON.stringify({ type: "join", name: "Host" }));
+      console.log("Lobby WebSocket opened (host via query param)");
     };
 
     ws.onmessage = (ev) => {
@@ -216,6 +215,9 @@ export default function Lobby() {
 
         <GameButton onClick={startGame} disabled={isStarting() || players().length === 0} class="w-full">
           {isStarting() ? "Starting..." : "Start Game"}
+        </GameButton>
+        <GameButton onClick={() => nav("/")} variant="secondary" class="w-full mt-4">
+          Cancel Lobby
         </GameButton>
       </div>
     </div>
