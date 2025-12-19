@@ -25,16 +25,17 @@ type LobbyManager struct {
 }
 
 type Lobby struct {
-	Code       string            `json:"code"`
-	Players    []string          `json:"players"`
-	Imposters  int               `json:"imposters"`
-	GameState  string            `json:"game_state"` // "waiting", "started", "ended"
-	GameWord   string            `json:"game_word"`
-	PlayerRole map[string]string // "imposter" or "word"
-	CreatedAt  time.Time         `json:"created_at"`
-	clients    map[*websocket.Conn]string
-	hostConn   *websocket.Conn // separate connection for host
-	mu         sync.Mutex
+	Code               string            `json:"code"`
+	Players            []string          `json:"players"`
+	Imposters          int               `json:"imposters"`
+	GameState          string            `json:"game_state"` // "waiting", "started", "ended"
+	GameWord           string            `json:"game_word"`
+	PlayerWordVotedBad map[string]bool   // track who voted bad word
+	PlayerRole         map[string]string // "imposter" or "word"
+	CreatedAt          time.Time         `json:"created_at"`
+	clients            map[*websocket.Conn]string
+	hostConn           *websocket.Conn // separate connection for host
+	mu                 sync.Mutex
 }
 
 type createLobbyResp struct {
@@ -496,7 +497,7 @@ func (m *LobbyManager) RestartGame(w http.ResponseWriter, r *http.Request) {
 func generateCode(n int) string {
 	letters := "abcdefghijklmnopqrstuvwxyz"
 	out := make([]byte, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		num, _ := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
 		out[i] = letters[num.Int64()]
 	}

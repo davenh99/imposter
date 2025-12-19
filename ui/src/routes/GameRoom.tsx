@@ -16,6 +16,8 @@ export default function GameRoom() {
   const [role, setRole] = createSignal<string | null>(roleParam || null);
   const [word, setWord] = createSignal<string | null>(wordParam || null);
   const apiUrl = getApiUrl();
+  const [playerCount, setPlayerCount] = createSignal(0);
+  const [wordBadVotes, setWordBadVotes] = createSignal(0);
 
   let ws: WebSocket | null = null;
 
@@ -130,9 +132,15 @@ export default function GameRoom() {
         {isHost ? (
           // Host screen (show host UI immediately, regardless of role/word)
           <div class="text-center">
-            <div class="text-6xl font-bold text-yellow-600 mb-4">🫩</div>
+            <div class="text-6xl font-bold text-yellow-600 mb-4">🤓</div>
             <h3 class="text-2xl font-bold text-gray-800 mb-4">Game In Progress</h3>
             <p class="text-gray-600 mb-8">who da imposter ඞ</p>
+            <div>
+              <h4>Does the word suck ?? 😲</h4>
+              <div class="text-4xl font-bold text-blue-600 mb-4">
+                {wordBadVotes()}/{playerCount()}
+              </div>
+            </div>
             <div class="flex gap-3">
               <GameButton onClick={endGame} class="flex-1 bg-red-600 hover:bg-red-700">
                 End Game
@@ -161,6 +169,21 @@ export default function GameRoom() {
               <p class="text-4xl font-bold text-blue-600">{word()}</p>
             </div>
             <p class="text-gray-600">Don't let the imposter figure this out!</p>
+            <p>Does the word suck?</p>
+            <GameButton
+              onClick={() => {
+                // vote that the word is bad
+              }}
+            >
+              Hell yeah
+            </GameButton>
+            <GameButton
+              onClick={() => {
+                // remove word is bad vote
+              }}
+            >
+              Nah, it's ok
+            </GameButton>
           </div>
         )}
       </div>
